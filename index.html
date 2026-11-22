@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andrew Hsu - agent platform projects</title>
+<meta name="description" content="Sixteen open-source projects that form one platform layer for AI agents: govern the tools, gate the changes, execute safely, meter the cost, trace everything.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2307090b'/%3E%3Ccircle cx='8' cy='8' r='4' fill='none' stroke='%23f0a13c' stroke-width='1.6'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar-in">
+    <div class="brand">
+      <span class="brand-name">Andrew Hsu</span>
+      <span class="brand-line">Software engineer - I build the platform layer that makes AI agents safe to run.</span>
+    </div>
+    <nav class="topnav">
+      <a href="#fleet">Fleet</a>
+      <a href="#run">Watch a run</a>
+      <a href="#tamper">Tamper test</a>
+      <a href="#projects">Projects</a>
+      <a href="#contact">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ HERO / FLEET GRAPH ============ -->
+  <section id="fleet" class="hero">
+    <div class="hero-head">
+      <h1>One platform, sixteen parts.</h1>
+      <p class="lede">The projects below are not a list - they are one system. Agents run on it,
+      a gateway governs their tools, canaries gate their changes, an execution shell keeps
+      remediation reversible, a ledger meters the cost, and a hash-chained trace store records
+      all of it. Click any node.</p>
+    </div>
+
+    <div class="graph-shell">
+      <svg id="graph" viewBox="0 0 1000 620" role="group" aria-label="Fleet graph of projects around the AgentTrace store"></svg>
+      <aside id="node-panel" class="node-panel" aria-live="polite"></aside>
+    </div>
+    <p class="graph-hint">Nodes marked <span class="dot-key"></span> emit into the trace store during the drill replayed below.</p>
+  </section>
+
+  <!-- ============ WATCH A RUN ============ -->
+  <section id="run" class="panel">
+    <div class="sec-head">
+      <h2>Watch a run</h2>
+      <span class="sec-tag">real data - trace <span id="drill-trace">trace-drill-45d404d0</span></span>
+    </div>
+    <p class="sec-sub">A real platform drill, replayed from the AgentTrace store: a canary blocks a bad
+    promotion, the gateway flags a poisoned tool result, a remediation agent is killed mid-run with
+    <span class="mono">kill -9</span>, resumes, fails verification, and rolls back - then the QA agent
+    answers, the ledger costs it, and the chaos matrix closes. 117 events, six producers, one trace ID.</p>
+
+    <div class="ribbon" id="ribbon"></div>
+
+    <div class="replay-controls">
+      <button id="play-btn" class="btn-amber" type="button">Play</button>
+      <input id="scrub" type="range" min="0" max="117" step="1" value="0" aria-label="Scrub replay">
+      <div class="replay-stats mono">
+        <span>events <b id="stat-events">0 / 117</b></span>
+        <span>cost <b id="stat-cost">$0.00000</b></span>
+        <span>chain <b id="stat-chain" class="ok">VERIFIED</b></span>
+      </div>
+    </div>
+    <div id="now-event" class="now-event mono">Press play, or drag the scrubber.</div>
+  </section>
+
+  <!-- ============ TAMPER DEMO ============ -->
+  <section id="tamper" class="panel">
+    <div class="sec-head">
+      <h2>The tamper test</h2>
+      <span class="sec-tag">live check - runs in your browser</span>
+    </div>
+    <p class="sec-sub">Every event in the store is hash-chained: each carries the previous event's SHA-256,
+    and its own hash covers its content. Below are the first 8 events of the same drill store, exactly as
+    recorded. Pick one, change any character in it, and re-verify - the chain breaks at that exact event.
+    The verification on this page is the real algorithm (the same canonical JSON + SHA-256 the Python and
+    Rust verifiers run), executed locally in your browser.</p>
+
+    <div class="tamper-grid">
+      <div>
+        <div id="chain-list" class="chain-list"></div>
+        <div class="tamper-actions">
+          <button id="verify-btn" class="btn-amber" type="button">Verify chain</button>
+          <button id="flip-btn" class="btn-ghost" type="button">Flip one character</button>
+          <button id="reset-btn" class="btn-ghost" type="button">Reset events</button>
+        </div>
+        <div id="tamper-status" class="tamper-status mono">Not verified yet.</div>
+      </div>
+      <div>
+        <label class="editor-label mono" for="event-editor">event <span id="editor-seq">seq 1</span> - editable JSON</label>
+        <textarea id="event-editor" spellcheck="false"></textarea>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PROJECT INDEX ============ -->
+  <section id="projects">
+    <div class="sec-head">
+      <h2>Project index</h2>
+      <span class="sec-tag">16 repositories - grouped by platform layer</span>
+    </div>
+    <div id="project-index"></div>
+  </section>
+
+</main>
+
+<footer id="contact">
+  <div class="wrap foot-in">
+    <span class="mono">Andrew Hsu</span>
+    <span class="foot-links">
+      <a href="https://github.com/hsooligan95">github.com/hsooligan95</a>
+      <a href="https://www.linkedin.com/in/andrew-hsu-715927241">linkedin.com/in/andrew-hsu-715927241</a>
+      <a href="mailto:andrew.hsu95@yahoo.com">andrew.hsu95@yahoo.com</a>
+    </span>
+  </div>
+</footer>
+
+<script src="data/projects.js"></script>
+<script src="data/drill.js"></script>
+<script src="data/chain.js"></script>
+<script src="canonical.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
