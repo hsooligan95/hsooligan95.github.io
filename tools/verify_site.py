@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Browser verification for the dev site: loads the page in Chromium,
 clicks the graph, exercises the tamper demo both ways, and runs the
-Live Agent Ops Feed end-to-end on both channels (autoplay, typing,
-decision cards, counters, roster states), with screenshots.
+Agent Ops Feed (recorded replay) end-to-end on both channels
+(autoplay, pacing, typing, decision cards, counters, roster states),
+with screenshots.
 Run with the cloakqa venv python."""
 import sys
+import time
 from playwright.sync_api import sync_playwright
 
 URL = "http://127.0.0.1:8901/index.html"
@@ -54,13 +56,30 @@ with sync_playwright() as pw:
     check("flip seq5 -> BROKEN @ SEQ 5", "BROKEN @ SEQ 5" in st, st[:70])
     page.locator("#reset-btn").click()
 
-    # ---------- live ops feed, channel 1 ----------
+    # ---------- ops feed (recorded replay), channel 1 ----------
     check("feed section present", page.locator("#feed").count() == 1)
+    chip = page.locator(".replay-chip")
+    check("REPLAY chip present in feed header",
+          chip.count() == 1 and "REPLAY" in chip.inner_text()
+          and "recorded run" in chip.inner_text(),
+          chip.inner_text() if chip.count() else "missing")
+    note = page.locator(".replay-note")
+    check("recorded-run line present under the intro",
+          note.count() == 1 and "Recorded from an actual run" in note.inner_text())
+    check("recorded-run line links to the agent-trace repo",
+          note.count() == 1 and note.locator("a").get_attribute("href")
+          == "https://github.com/hsooligan95/agent-trace")
+    check("feed heading no longer claims 'Live'",
+          page.locator("#run h2").inner_text() == "Agent ops feed",
+          page.locator("#run h2").inner_text())
     check("two channel tabs", page.locator(".chan-tab").count() == 2)
     check("roster has 7 rows on ch1", page.locator(".roster-row").count() == 7,
           str(page.locator(".roster-row").count()))
     page.locator("#run").scroll_into_view_if_needed()
+    page.wait_for_timeout(300)
+    page.screenshot(path="shots/desktop-feed-header.png")
     # autoplay on scroll into view: posts should start accumulating
+    t0 = time.time()
     try:
         page.wait_for_function(
             "document.querySelectorAll('#feed .fm').length >= 4", timeout=15000)
@@ -68,6 +87,19 @@ with sync_playwright() as pw:
     except Exception:
         check("feed auto-plays when scrolled into view", False,
               "only %d posts" % page.locator("#feed .fm").count())
+    # pacing: the slowed 1x base should take >=15s to land the first 10
+    # posts (the pre-fix pace did it in ~12s; the model says ~24s)
+    try:
+        page.wait_for_function(
+            "document.querySelectorAll('#feed .fm:not(.fm-typing)').length >= 10",
+            timeout=60000)
+        elapsed = time.time() - t0
+        check("pacing: first 10 posts take >=15s at 1x", elapsed >= 15,
+              "%.1fs" % elapsed)
+    except Exception:
+        check("pacing: first 10 posts take >=15s at 1x", False,
+              "only %d landed posts" %
+              page.locator("#feed .fm:not(.fm-typing)").count())
     # roster status changes while running
     blast_status = page.locator(".roster-row", has_text="blast-radius").locator(".r-status").inner_text()
     check("roster statuses are live", blast_status != "" , blast_status)
@@ -151,7 +183,12 @@ with sync_playwright() as pw:
     merrors = []
     mob.on("pageerror", lambda e: merrors.append(str(e)))
     mob.goto(URL); mob.wait_for_timeout(600)
+    check("mobile: REPLAY chip present",
+          mob.locator(".replay-chip").count() == 1
+          and "REPLAY" in mob.locator(".replay-chip").inner_text())
     mob.locator("#run").scroll_into_view_if_needed()
+    mob.wait_for_timeout(300)
+    mob.screenshot(path="shots/mobile-feed-header.png")
     try:
         mob.wait_for_function(
             "document.querySelectorAll('#feed .fm').length >= 3", timeout=15000)

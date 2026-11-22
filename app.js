@@ -88,14 +88,15 @@
   }
   selectProject("agent-trace", false);
 
-  /* ================= live agent ops feed =================
-   * Two recorded runs, replayed as a live group-chat feed. Scripts are
+  /* ================= agent ops feed (recorded replay) =================
+   * Two recorded runs, replayed as a group-chat feed. Scripts are
    * generated (tools/gen_feed.py): channel 1 from the real AgentTrace
    * drill store, channel 2 from the MissionControl suite report. */
   const feedEl = $("#feed"), rosterEl = $("#roster-list"), decEl = $("#decisions");
   const feedPlayBtn = $("#play-btn"), feedStatus = $("#feed-status"), feedBar = $("#feed-bar");
   let chan = null, chanIdx = 0, itemIdx = 0, playing = false, userHold = false;
   let finished = false, speed = 1, feedTimer = null, typingEl = null;
+  let chanPace = 1; // per-channel slowdown on top of the base delays
   let rosterEls = {};
 
   function rosterSet(id, state, text) {
@@ -109,6 +110,8 @@
     hideTyping();
     playing = false; userHold = false; finished = false; itemIdx = 0;
     chanIdx = ci; chan = window.FEED.channels[ci];
+    // The arbitration is a deliberation, not a drill: it runs slower.
+    chanPace = chan.id === "incident-arbitration" ? 1.5 : 1;
     feedEl.innerHTML = ""; decEl.innerHTML = ""; rosterEl.innerHTML = "";
     rosterEls = {};
     chan.roster.forEach((r) => {
@@ -186,10 +189,17 @@
     if (chan.id === "platform-drill") $("#hub-count").textContent = it.ev + " events";
     feedBar.style.width = Math.round((itemIdx + 1) / chan.items.length * 100) + "%";
   }
+  /* Pacing at 1x (before the per-channel pace and the speed control):
+   * the typing dwell scales with how much the agent is "saying", so a
+   * substantive post gets a beat of visible thinking (~0.95-1.5s);
+   * decisions and system banners then hold ~1.7s so they can land.
+   * Channel 1 lands at ~90s total, channel 2 (at 1.5x pace) at ~40s. */
   function delays(it) {
-    if (it.kind === "decision") return { type: 850, hold: 700 };
-    if (it.kind === "system") return { type: 0, hold: 800 };
-    return { type: 600, hold: 480 };
+    if (it.kind === "decision") return { pre: 1400, hold: 1700 };
+    if (it.kind === "system") return { pre: 500, hold: 1700 };
+    const len = (it.text || "").length;
+    const type = Math.min(1500, Math.max(950, 700 + len * 4));
+    return { pre: type, hold: 950 };
   }
   function step() {
     if (!playing) return;
@@ -204,17 +214,18 @@
     }
     const it = chan.items[itemIdx];
     const d = delays(it);
+    const slow = chanPace / speed; // timeouts scale up with pace, down with speed
     if (it.agent) {
       showTyping(it);
       feedTimer = setTimeout(() => {
         hideTyping(); land(it); itemIdx++;
-        feedTimer = setTimeout(step, d.hold / speed);
-      }, d.type / speed);
+        feedTimer = setTimeout(step, d.hold * slow);
+      }, d.pre * slow);
     } else {
       feedTimer = setTimeout(() => {
         land(it); itemIdx++;
-        feedTimer = setTimeout(step, d.hold / speed);
-      }, d.hold / speed);
+        feedTimer = setTimeout(step, d.hold * slow);
+      }, d.pre * slow);
     }
   }
   function playFeed() {
@@ -222,7 +233,7 @@
     if (playing) return;
     playing = true; userHold = false;
     feedPlayBtn.textContent = "Pause";
-    feedStatus.textContent = "live — replaying the record";
+    feedStatus.textContent = "replaying — recorded run";
     step();
   }
   function pauseFeed(auto) {

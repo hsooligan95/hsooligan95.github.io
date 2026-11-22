@@ -1,7 +1,7 @@
 # hsooligan95.github.io
 
 Andrew Hsu's developer site: a static page presenting a set of AI agent
-platform projects — the fleet graph, a live agent ops feed that replays
+platform projects — the fleet graph, an agent ops feed that replays
 recorded runs as an agent group chat, and a live tamper-evidence demo —
 with links to each project's GitHub repository.
 

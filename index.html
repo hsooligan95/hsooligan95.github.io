@@ -18,7 +18,7 @@
     </div>
     <nav class="topnav">
       <a href="#fleet">Fleet</a>
-      <a href="#run">Live feed</a>
+      <a href="#run">Ops feed</a>
       <a href="#tamper">Tamper test</a>
       <a href="#projects">Projects</a>
       <a href="#contact">Contact</a>
@@ -45,16 +45,22 @@
     <p class="graph-hint">Nodes marked <span class="dot-key"></span> emit into the trace store during the drill replayed below.</p>
   </section>
 
-  <!-- ============ LIVE AGENT OPS FEED ============ -->
+  <!-- ============ AGENT OPS FEED - RECORDED REPLAY ============ -->
   <section id="run" class="panel">
     <div class="sec-head">
-      <h2>Live agent ops feed</h2>
+      <div class="sec-title">
+        <h2>Agent ops feed</h2>
+        <span class="replay-chip">REPLAY — recorded run</span>
+      </div>
       <span class="sec-tag">recorded runs - replayed as they happened</span>
     </div>
     <p class="sec-sub">This is what the platform looks like while it works: the agents post what they
     are doing, argue when they disagree, and record their decisions in the open. Both channels below
     are real recorded runs from the AgentTrace store - every number in the feed is from the record;
     only the pacing is a replay.</p>
+    <p class="sec-sub replay-note">Recorded from an actual run of this platform. Every event is in
+    the public <a href="https://github.com/hsooligan95/agent-trace">agent-trace</a> store — the
+    dashboard in that repo is the live version of this view.</p>
 
     <div class="chan-tabs" role="tablist" aria-label="Feed channels">
       <button class="chan-tab active" type="button" data-chan="0" role="tab">#platform-drill</button>
@@ -70,8 +76,8 @@
 
       <div id="feed" class="feed" aria-live="polite"></div>
 
-      <aside class="state" aria-label="Live state">
-        <div class="rail-title">LIVE STATE</div>
+      <aside class="state" aria-label="Run state">
+        <div class="rail-title">RUN STATE</div>
         <div class="stat-row"><span>events</span><b id="st-events">0 / 117</b></div>
         <div class="stat-row" id="st-cost-row"><span>run cost</span><b id="st-cost">$0.00000</b></div>
         <div class="stat-row"><span>chain</span><b id="st-chain" class="ok">VERIFIED</b></div>
