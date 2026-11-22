@@ -72,7 +72,9 @@ with sync_playwright() as pw:
     check("feed heading no longer claims 'Live'",
           page.locator("#run h2").inner_text() == "Agent ops feed",
           page.locator("#run h2").inner_text())
-    check("two channel tabs", page.locator(".chan-tab").count() == 2)
+    check("three channel tabs", page.locator(".chan-tab").count() == 3)
+    check("third tab is #stale-corpus",
+          page.locator('.chan-tab[data-chan="2"]').inner_text() == "#stale-corpus")
     check("roster has 7 rows on ch1", page.locator(".roster-row").count() == 7,
           str(page.locator(".roster-row").count()))
     page.locator("#run").scroll_into_view_if_needed()
@@ -177,6 +179,69 @@ with sync_playwright() as pw:
     page.locator("#feed").scroll_into_view_if_needed()
     page.screenshot(path="shots/desktop-feed-ch2.png")
 
+    # ---------- channel 3: stale corpus (AgentFlightSim) ----------
+    page.locator('.speed-btn[data-speed="1"]').click()
+    page.locator('.chan-tab[data-chan="2"]').click()
+    page.wait_for_timeout(400)
+    check("ch3 roster swaps to flightsim + agent + oracles",
+          page.locator(".roster-row").count() == 4,
+          str(page.locator(".roster-row").count()))
+    roster3 = page.locator("#roster-list").inner_text()
+    check("ch3 oracles marked as checkers in the roster",
+          "freshness-oracle" in roster3 and "consistency-oracle" in roster3
+          and "checker" in roster3)
+    check("ch3 cost row hidden (no cost in the artifacts)",
+          page.locator("#st-cost-row").is_hidden())
+    check("ch3 heading is the stale-corpus story",
+          "stale corpus" in page.locator("#feed-heading").inner_text(),
+          page.locator("#feed-heading").inner_text())
+    try:
+        page.wait_for_function(
+            "document.querySelectorAll('#feed .fm:not(.fm-typing)').length >= 6",
+            timeout=30000)
+        check("ch3 mid-run posts accumulate", True)
+    except Exception:
+        check("ch3 mid-run posts accumulate", False,
+              str(page.locator("#feed .fm").count()))
+    page.screenshot(path="shots/desktop-feed-ch3.png")
+    page.locator('.speed-btn[data-speed="4"]').click()
+    try:
+        page.wait_for_function(
+            "document.querySelector('#feed-status').textContent.startsWith('complete')",
+            timeout=60000)
+        check("channel 3 runs to completion", True)
+    except Exception:
+        check("channel 3 runs to completion", False,
+              page.locator("#feed-status").inner_text())
+    feed3 = page.locator("#feed").inner_text()
+    check("ch3 carries the exact recorded answer",
+          "The HP-40 hydraulic pump on Line 3 is operational and running normally"
+          in feed3 and "No maintenance hold is active on the HP-40 pump" in feed3)
+    check("ch3 posts are labelled from the run log, not the store",
+          "log @ post 5" in feed3)
+    card = page.locator("#feed .fm-decision")
+    check("ch3 has exactly one decision card, in the fail tone",
+          card.count() == 1 and "fm-fail" in (card.get_attribute("class") or ""),
+          card.get_attribute("class") if card.count() else "none")
+    check("ch3 decision card is the SILENT FAILURE card",
+          "SILENT FAILURE — fully grounded, factually wrong" in feed3
+          and "groundedness scorer: PASS" in feed3
+          and "freshness oracle: FLAGGED" in feed3)
+    check("ch3 decisions log has the silent failure",
+          page.locator("#decisions .dec-row").count() == 1
+          and "SILENT FAILURE" in page.locator("#decisions").inner_text())
+    check("ch3 grid totals are the real ones",
+          "43/108" in feed3 and "72 findings" in feed3
+          and "42 stale-as-current" in feed3 and "0 of 18 runs pass" in feed3)
+    check("ch3 events counter reaches 14 / 14",
+          page.locator("#st-events").inner_text() == "14 / 14",
+          page.locator("#st-events").inner_text())
+    check("ch3 chain pill still VERIFIED",
+          page.locator("#st-chain").inner_text() == "VERIFIED")
+    card.scroll_into_view_if_needed()
+    page.wait_for_timeout(300)
+    page.screenshot(path="shots/desktop-feed-ch3-decision.png")
+
     check("no console/page errors overall", not errors, str(errors[:3]))
 
     mob = browser.new_page(viewport={"width": 390, "height": 844})
@@ -196,6 +261,14 @@ with sync_playwright() as pw:
     except Exception:
         check("mobile feed auto-plays", False)
     mob.screenshot(path="shots/mobile-feed.png")
+    mob.locator('.chan-tab[data-chan="2"]').click()
+    try:
+        mob.wait_for_function(
+            "document.querySelectorAll('#feed .fm').length >= 3", timeout=20000)
+        check("mobile ch3 (#stale-corpus) plays", True)
+    except Exception:
+        check("mobile ch3 (#stale-corpus) plays", False)
+    mob.screenshot(path="shots/mobile-feed-ch3.png")
     check("mobile: no page errors", not merrors, str(merrors[:2]))
     browser.close()
 

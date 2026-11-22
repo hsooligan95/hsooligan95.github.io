@@ -18,8 +18,9 @@ open `index.html` or serve the directory and it runs as-is.
   byte-for-byte with the stored events
 - `data/projects.js` — the project list rendered into the fleet graph
 - `data/feed.js` — the ops-feed scripts: the platform drill condensed
-  from the drill store, and the MissionControl incident-arbitration
-  scenario parsed from its suite report
+  from the drill store, the MissionControl incident-arbitration
+  scenario parsed from its suite report, and the AgentFlightSim
+  stale-corpus batch parsed from that repo's shipped run
 - `data/drill.js`, `data/chain.js` — the run data behind the tamper demo
 
 ## Where the data comes from
@@ -47,4 +48,4 @@ and Rust verifiers produce on the same store.
 - `tools/verify_js_canonical.mjs` — check the browser canonicalization
   against the Python reference
 - `tools/verify_site.py` — full browser verification: graph, tamper
-  demo, and both ops-feed channels played end-to-end
+  demo, and all three ops-feed channels played end-to-end

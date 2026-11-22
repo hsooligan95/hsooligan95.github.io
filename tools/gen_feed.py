@@ -16,6 +16,11 @@ mission-control/output/report.md: the arbiter's decision-record JSON
 block (evidence queries, reasons, choice) plus the proposal
 confidences from the prose. If the report changes shape, this fails
 loudly instead of drifting.
+
+Channel 3 (#stale-corpus) is the AgentFlightSim stale-corpus story,
+parsed out of agent-flightsim's shipped artifacts (output/results.json,
+README.md, flightsim/cases.py, output/agenttrace.jsonl) with the same
+fail-loud assertions on every number and on the recorded answer itself.
 """
 import json, re
 from pathlib import Path
@@ -302,12 +307,148 @@ ch2 = {
     "items": items2,
 }
 
-feed = {"channels": [ch1, ch2]}
+# ---------- channel 3: parsed from the AgentFlightSim artifacts ----------
+# The stale-corpus story, from agent-flightsim's shipped run only:
+# output/results.json (108 grid runs + fuzz), the README's incident
+# quote (asserted identical to the recorded answer in results.json),
+# the question text in flightsim/cases.py, and the AgentTrace batch
+# the run emitted (output/agenttrace.jsonl, 146 events).
+from collections import Counter
+FS = ROOT / "agent-flightsim"
+fs_results = json.loads((FS / "output" / "results.json").read_text())
+fs_readme = (FS / "README.md").read_text()
+grid = fs_results["grid"]
+assert len(grid) == 108 and sum(r["passed"] for r in grid) == 43
+fcount = Counter(f["class"] for r in grid for f in r["findings"])
+assert fcount == {"stale_corpus_answered_as_current": 42,
+                  "answer_contradiction": 14, "sources_disagree": 16}, fcount
+cells = {}
+for r in grid:
+    cells.setdefault((r["staleness"], r["dependency"], r["redundancy"], r["user"]), []).append(r)
+clean = [k for k, v in cells.items()
+         if all(x["passed"] for x in v) and not any(x["findings"] for x in v)]
+assert len(cells) == 36 and len(clean) == 4, (len(cells), len(clean))
+
+hero = next(r for r in grid if r["case"] == "n-status" and r["staleness"] == "stale"
+            and r["dependency"] == "degraded" and r["redundancy"] == "overlap"
+            and r["user"] == "normal")
+assert hero["grounded"] is True and hero["abstained"] is False
+assert [f["class"] for f in hero["findings"]] == ["stale_corpus_answered_as_current"]
+gdocs = hero["findings"][0]["evidence"]["grounding_docs"]
+assert {d["snapshot"] for d in gdocs} == {"2026-11-20"} and len(gdocs) == 2
+quote = hero["answer"]
+bq = re.search(r'> "(.+?)"', fs_readme, re.S).group(1)
+assert " ".join(bq.replace("\n>", " ").split()) == quote, \
+    "README incident quote drifted from results.json"
+assert "overlap 1.0" in fs_readme and "World truth, 2026-11-21" in fs_readme
+
+cases_src = (FS / "flightsim" / "cases.py").read_text()
+assert "What is the current status of the HP-40 hydraulic " in cases_src \
+    and 'pump on Line 3?"' in cases_src
+question = "What is the current status of the HP-40 hydraulic pump on Line 3?"
+
+sd = [r for r in grid if r["staleness"] == "stale" and r["dependency"] == "degraded"]
+assert len(sd) == 18 and not any(r["passed"] for r in sd)
+fd = [r for r in grid if r["case"].endswith("status") and r["staleness"] == "fresh"
+      and r["dependency"] == "degraded" and r["redundancy"] == "overlap"]
+assert fd and all(r["passed"] for r in fd) and all(
+    {f["class"] for f in r["findings"]} == {"answer_contradiction", "sources_disagree"}
+    for r in fd)
+assert "removed yesterday and sent out for repair" in fd[0]["answer"]
+
+vs = next(m for m in fs_results["fuzz"] if m["mutation"] == "value_swap")
+assert len(vs["escapes"]) == 4 and "changed from 2 to 7" in vs["description"]
+trace_text = (FS / "output" / "agenttrace.jsonl").read_text()
+trace_events = [l for l in trace_text.splitlines() if l.strip()]
+assert len(trace_events) == 146 and "flightsim-grid-20261121" in trace_text
+
+items3, _n = [], [0]
+def n3():
+    _n[0] += 1
+    return _n[0]
+def msg3(agent, say, text):
+    return {"kind": "msg", "agent": agent, "say": say, "text": text, "ev": n3()}
+def sys3(style, text):
+    return {"kind": "system", "style": style, "text": text, "ev": n3()}
+
+items3.append(sys3("start",
+    "simulation batch opened — trace flightsim-grid-20261121 · 108 runs over 36 world-state cells"))
+items3.append(msg3("agent-flightsim", "is setting the world",
+    "World truth, 2026-11-21: the HP-40 hydraulic pump on Line 3 is DOWN — removed for "
+    "repair. Line 3 runs on the backup pump BP-9 at reduced capacity. That is the world. "
+    "Now I take the agent's map of it away."))
+items3.append(msg3("agent-flightsim", "is aging the corpus",
+    "Cell: staleness = stale × dependency = degraded. Both corpora the agent can read — "
+    "inventory and maintenance — are snapshots generated 2026-11-20 at 06:00, yesterday. "
+    "The documents carry those dates in their headers. Nothing in the pipeline reads them."))
+items3.append(msg3("agent-flightsim", "is relaying the operator question",
+    "Operator question, exactly as the harness asks it: “%s”" % question))
+items3.append(msg3("factory-floor-agent", "is answering from the corpus",
+    "“%s”" % quote))
+items3.append(msg3("agent-flightsim", "is reporting the groundedness check",
+    "Groundedness check: GREEN. Every claim in that answer is grounded in a retrieved "
+    "passage — overlap 1.0, no abstention. True, and useless: it is grounded in a world "
+    "that no longer exists."))
+items3.append(msg3("freshness-oracle", "is flagging the grounding",
+    "Finding: stale_corpus_answered_as_current. Both grounding documents are snapshots "
+    "dated 2026-11-20; world truth is 2026-11-21, and the pump was removed in between. "
+    "The agent certified yesterday's world as today's — confidently, in writing."))
+items3.append(msg3("consistency-oracle", "is reporting a second cell",
+    "Second cell, fresh × degraded: one twin serves a cached older snapshot and the "
+    "answer asserts BOTH worlds in a single reply — “operational and running normally… "
+    "No maintenance hold is active” and “removed yesterday and sent out for repair.” "
+    "Findings: answer_contradiction + sources_disagree. The scorer passed those runs — "
+    "each sentence is grounded against its own passage."))
+items3.append({"kind": "decision", "agent": "agent-flightsim", "ev": n3(),
+    "say": "is recording the batch verdict", "tone": "fail",
+    "title": "SILENT FAILURE — fully grounded, factually wrong",
+    "lines": ["groundedness scorer: PASS — every claim grounded at overlap 1.0",
+              "freshness oracle: FLAGGED — stale corpus answered as current",
+              "consistency oracle: FLAGGED — one answer asserting two worlds",
+              "no fault event, no fallback, no abstention — nothing in the pipeline objected"],
+    "log": "agent-flightsim · SILENT FAILURE — grounded and wrong; scorer PASS, oracles FLAGGED"})
+items3.append(msg3("agent-flightsim", "is posting the grid totals",
+    "Full grid: 108 runs. The scorer passed 43/108. The oracles logged 72 findings the "
+    "scorer's verdicts alone don't express — 42 stale-as-current, 14 answer "
+    "contradictions, 16 source disagreements. Only 4 of 36 cells are fully clean."))
+items3.append(msg3("freshness-oracle", "is posting the worst cell",
+    "Worst cell, stale × degraded: 0 of 18 runs pass. Every answer is a coherent "
+    "yesterday — no fault event, no warning anywhere in the agent. The sim is the only "
+    "place this world was ever enumerated."))
+items3.append(msg3("agent-flightsim", "is reporting the fuzz result",
+    "Off-grid fuzzing, honestly: value_swap — a stock count changed from 2 to 7, a value "
+    "in neither snapshot — escapes EVERY layer (4 escapes). No scorer term pins the "
+    "count, and with one source stating it, the consistency oracle has nothing to "
+    "disagree with. It is a register entry and a regression test now, not a footnote."))
+items3.append(sys3("info",
+    "batch emitted to an AgentTrace store — 146 events under one trace ID · hash chain verifies end-to-end"))
+items3.append(sys3("done",
+    "■ batch closed — the scorer said grounded; the oracles said stale. Both were right, about different things."))
+assert 12 <= len(items3) <= 16, len(items3)
+
+ch3 = {
+    "id": "flightsim",
+    "tab": "#stale-corpus",
+    "heading": "stale corpus — the failure the groundedness scorer cannot see",
+    "seqword": "log @ post ",
+    "roster": [
+        {"id": "agent-flightsim", "note": "scenario engine · runs the grid"},
+        {"id": "factory-floor-agent", "note": "agent under test"},
+        {"id": "freshness-oracle", "note": "checker · reads snapshot dates"},
+        {"id": "consistency-oracle", "note": "checker · cross-source agreement"},
+    ],
+    "totals": {"events": len(items3), "cost": None},
+    "items": items3,
+}
+
+feed = {"channels": [ch1, ch2, ch3]}
 OUT.write_text(
     "/* Generated by tools/gen_feed.py — channel 1 derived from the real\n"
     " * AgentTrace drill store, channel 2 parsed from the MissionControl\n"
-    " * suite report. Presentation wording only; every number is real. */\n"
+    " * suite report, channel 3 parsed from the AgentFlightSim shipped\n"
+    " * run. Presentation wording only; every number is real. */\n"
     "window.FEED = " + json.dumps(feed, indent=1) + ";\n")
 print("channel 1 items:", len(items), "| final ev:", items[-1]["ev"], "| final cost:", items[-1]["cost"])
 print("channel 2 items:", len(items2))
+print("channel 3 items:", len(items3), "| quote chars:", len(quote))
 print("wrote", OUT)

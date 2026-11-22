@@ -89,9 +89,10 @@
   selectProject("agent-trace", false);
 
   /* ================= agent ops feed (recorded replay) =================
-   * Two recorded runs, replayed as a group-chat feed. Scripts are
+   * Three recorded runs, replayed as a group-chat feed. Scripts are
    * generated (tools/gen_feed.py): channel 1 from the real AgentTrace
-   * drill store, channel 2 from the MissionControl suite report. */
+   * drill store, channel 2 from the MissionControl suite report,
+   * channel 3 from the AgentFlightSim shipped run. */
   const feedEl = $("#feed"), rosterEl = $("#roster-list"), decEl = $("#decisions");
   const feedPlayBtn = $("#play-btn"), feedStatus = $("#feed-status"), feedBar = $("#feed-bar");
   let chan = null, chanIdx = 0, itemIdx = 0, playing = false, userHold = false;
@@ -111,7 +112,9 @@
     playing = false; userHold = false; finished = false; itemIdx = 0;
     chanIdx = ci; chan = window.FEED.channels[ci];
     // The arbitration is a deliberation, not a drill: it runs slower.
-    chanPace = chan.id === "incident-arbitration" ? 1.5 : 1;
+    // The FlightSim batch is a post-mortem: slightly slower than the drill.
+    chanPace = chan.id === "incident-arbitration" ? 1.5
+             : chan.id === "flightsim" ? 1.25 : 1;
     feedEl.innerHTML = ""; decEl.innerHTML = ""; rosterEl.innerHTML = "";
     rosterEls = {};
     chan.roster.forEach((r) => {
@@ -160,20 +163,20 @@
     if (it.kind === "msg") {
       el.className = "fm fm-msg";
       el.innerHTML = '<div class="fm-head"><span class="fm-agent">' + it.agent +
-        '</span><span class="fm-seq">store @ seq ' + it.ev + '</span></div>' +
+        '</span><span class="fm-seq">' + (chan.seqword || "store @ seq ") + it.ev + '</span></div>' +
         '<div class="fm-body">' + it.text + '</div>';
-      rosterSet(it.agent, "idle", "last post · seq " + it.ev);
+      rosterSet(it.agent, "idle", "last post · " + (chan.seqword ? "post " : "seq ") + it.ev);
     } else if (it.kind === "decision") {
-      el.className = "fm fm-decision";
+      el.className = "fm fm-decision" + (it.tone ? " fm-" + it.tone : "");
       el.innerHTML = '<div class="fm-head"><span class="fm-agent">' + it.agent +
         '</span><span class="fm-dec-tag">DECISION</span>' +
-        '<span class="fm-seq">store @ seq ' + it.ev + '</span></div>' +
+        '<span class="fm-seq">' + (chan.seqword || "store @ seq ") + it.ev + '</span></div>' +
         '<div class="fm-title">' + it.title + '</div><ul class="fm-lines">' +
         it.lines.map((l) => "<li>" + l + "</li>").join("") + "</ul>";
       const row = document.createElement("div");
       row.className = "dec-row"; row.textContent = it.log;
       decEl.appendChild(row);
-      rosterSet(it.agent, "idle", "decision recorded · seq " + it.ev);
+      rosterSet(it.agent, "idle", "decision recorded · " + (chan.seqword ? "post " : "seq ") + it.ev);
     } else {
       el.className = "fm fm-sys sys-" + it.style;
       el.textContent = it.text;
