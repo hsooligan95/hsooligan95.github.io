@@ -27,13 +27,122 @@ with sync_playwright() as pw:
     page.wait_for_timeout(600)
 
     check("no console/page errors on load", not errors, str(errors[:3]))
-    check("16 graph nodes", page.locator("#graph .node").count() == 16)
+    check("15 graph nodes", page.locator("#graph .node").count() == 15)
     check("default panel is agent-trace", "agent-trace" in page.locator("#node-panel h3").inner_text())
     check("tamper status VERIFIED on load",
           "CHAIN VERIFIED" in page.locator("#tamper-status").inner_text(),
           page.locator("#tamper-status").inner_text()[:60])
     check("chain list has 8 events", page.locator(".chain-row").count() == 8)
-    check("project index rows", page.locator(".proj-row").count() == 16)
+    check("project index rows", page.locator(".proj-row").count() == 15)
+
+    # ---------- pulumi removal ----------
+    check("no 'pulumi' anywhere in the page",
+          page.evaluate("!document.body.innerText.toLowerCase().includes('pulumi')"))
+    check("PROJECTS data has exactly 15 entries, none retired",
+          page.evaluate("window.PROJECTS.length === 15 && "
+                        "!window.PROJECTS.some(p => p.id.toLowerCase().includes('pulumi'))"))
+    check("headline counts fifteen",
+          page.locator(".hero-head h1").inner_text() == "One platform, fifteen parts.")
+
+    # ---------- providers strip ----------
+    check("providers strip shows 4 provider chips",
+          page.locator(".prov-chip").count() == 4,
+          str(page.locator(".prov-chip").count()))
+    check("providers strip carries the honest adapter line",
+          "Adapters plug in underneath" in page.locator(".providers-strip").inner_text()
+          and "Today's adapters are AWS" in page.locator(".providers-strip").inner_text())
+    page.locator(".providers-strip").scroll_into_view_if_needed()
+    page.wait_for_timeout(250)
+    page.screenshot(path="shots/desktop-providers.png")
+
+    # ---------- rich per-agent panels ----------
+    check("every project carries a provider tag in data",
+          page.evaluate("window.PROJECTS.every(p => p.provider && p.provider.length > 3)"))
+    check("index rows show 15 provider tags",
+          page.locator(".pr-prov").count() == 15,
+          str(page.locator(".pr-prov").count()))
+
+    def panel_check(pid, provider_frag):
+        page.locator('#graph .node[data-id="%s"]' % pid).click()
+        page.wait_for_timeout(200)
+        txt = page.locator("#node-panel").inner_text()
+        low = txt.lower()
+        ok = ("purpose" in low and "what makes it unique" in low
+              and "consumes" in low and "produces" in low and "talks to" in low
+              and provider_frag.lower() in low)
+        check("rich panel: " + pid, ok, txt[:80].replace("\n", " "))
+        return txt
+
+    panel_check("agent-gate", "Provider-agnostic")
+    page.screenshot(path="shots/desktop-panel-gate.png")
+    panel_check("cred-broker", "Provider-agnostic")
+    panel_check("blast-radius", "AWS (mock) execution adapter")
+    panel_check("agentcore-port", "AWS adapter")
+    panel_check("mcp-aws-explorer", "AWS adapter")
+
+    # talks-to chips navigate: from agent-gate, click the cred-broker chip
+    page.locator('#graph .node[data-id="agent-gate"]').click()
+    page.wait_for_timeout(150)
+    page.locator('.talk-chip[data-talk="cred-broker"]').click()
+    page.wait_for_timeout(200)
+    check("talks-to chip navigates gate -> cred-broker",
+          "cred-broker" in page.locator("#node-panel h3").inner_text()
+          and page.locator('#graph .node[data-id="cred-broker"].selected').count() == 1)
+
+    # ---------- guided walkthrough ----------
+    TOUR_EXPECT = [
+        ("The working agent", ["factory-floor-agent"]),
+        ("Gated before it runs", ["agent-canary"]),
+        ("Credentials, scoped down", ["agent-gate", "cred-broker"]),
+        ("Policy at the door", ["agent-gate"]),
+        ("Execution with a way back", ["blast-radius"]),
+        ("Every step metered", ["agent-ledger"]),
+        ("One record of everything", ["agent-trace"]),
+        ("Proven before production", ["agent-chaos", "agent-flightsim"]),
+        ("Disagreement, arbitrated", ["mission-control"]),
+        ("Evidence for the assessor", ["ato-in-a-box"]),
+        ("How it scales", None),  # all 15 hot
+    ]
+    page.locator("#tour-btn").click()
+    page.wait_for_timeout(400)
+    for i, (title, hot) in enumerate(TOUR_EXPECT):
+        h3 = page.locator("#node-panel h3").inner_text()
+        check("tour step %d title" % (i + 1), h3 == title, h3)
+        hot_ids = page.evaluate(
+            "Array.from(document.querySelectorAll('#graph .node.tour-hot'))"
+            ".map(g => g.dataset.id).sort()")
+        if hot is None:
+            check("tour step %d highlights all 15 nodes" % (i + 1),
+                  len(hot_ids) == 15, str(len(hot_ids)))
+            check("tour final step links the nightly drill",
+                  page.locator('#node-panel a[href*="nightly-drill"]').count() == 1)
+            page.screenshot(path="shots/desktop-tour-scale.png")
+        else:
+            check("tour step %d highlights the right nodes" % (i + 1),
+                  hot_ids == sorted(hot), str(hot_ids))
+        check("tour step %d dims the rest" % (i + 1),
+              page.evaluate("document.querySelectorAll('#graph .node.dim').length")
+              == 15 - (len(hot) if hot else 15))
+        check("tour step %d caption present" % (i + 1),
+              len(page.locator("#node-panel .np-tour-body").inner_text()) > 60
+              and "flowed" in page.locator("#node-panel").inner_text().lower())
+        if i == 2:
+            check("tour step 3 draws the broker->gate arc",
+                  page.locator("#graph .tour-arc").count() == 1)
+        if i == 3:
+            page.wait_for_timeout(300)
+            page.screenshot(path="shots/desktop-tour-gate.png")
+        if i < len(TOUR_EXPECT) - 1:
+            page.locator("#tour-next").click()
+            page.wait_for_timeout(250)
+    check("tour pulse animation is running",
+          page.locator("#graph .tour-pulse").count() >= 1)
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(250)
+    check("Esc exits the tour back to free exploration",
+          page.locator("#graph .node.tour-hot").count() == 0
+          and page.locator("#graph .node.dim").count() == 0
+          and "purpose" in page.locator("#node-panel").inner_text().lower())
 
     # graph click-through
     page.locator('#graph .node[data-id="blast-radius"]').click()
@@ -251,6 +360,20 @@ with sync_playwright() as pw:
     check("mobile: REPLAY chip present",
           mob.locator(".replay-chip").count() == 1
           and "REPLAY" in mob.locator(".replay-chip").inner_text())
+    mob.locator("#tour-btn").click()
+    mob.wait_for_timeout(400)
+    check("mobile: tour starts with step 1 caption",
+          mob.locator("#node-panel h3").inner_text() == "The working agent"
+          and mob.locator("#graph .node.tour-hot").count() == 1)
+    mob.locator("#tour-next").click()
+    mob.wait_for_timeout(300)
+    check("mobile: tour advances to step 2",
+          mob.locator("#node-panel h3").inner_text() == "Gated before it runs")
+    mob.screenshot(path="shots/mobile-tour.png")
+    mob.locator("#tour-exit").click()
+    mob.wait_for_timeout(200)
+    check("mobile: tour exit restores the panel",
+          "purpose" in mob.locator("#node-panel").inner_text().lower())
     mob.locator("#run").scroll_into_view_if_needed()
     mob.wait_for_timeout(300)
     mob.screenshot(path="shots/mobile-feed-header.png")

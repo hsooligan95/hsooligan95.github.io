@@ -38,6 +38,7 @@
 
   const nodeEls = {};   // id -> <g>
   const edgeEls = {};   // id -> <line>
+  const nodePos = {};   // id -> {x, y}
   ordered.forEach((p, i) => {
     const a = (i / ordered.length) * Math.PI * 2 - Math.PI / 2;
     const x = CX + RX * Math.cos(a), y = CY + RY * Math.sin(a);
@@ -53,6 +54,7 @@
   ordered.forEach((p, i) => {
     const a = (i / ordered.length) * Math.PI * 2 - Math.PI / 2;
     const x = CX + RX * Math.cos(a), y = CY + RY * Math.sin(a);
+    nodePos[p.id] = { x: x, y: y };
     const g = el("g", { "class": "node", "data-id": p.id, tabindex: "0", role: "button",
                         "aria-label": p.name }, svg);
     el("circle", { cx: x, cy: y, r: 17, fill: "transparent" }, g); // hit area
@@ -70,23 +72,203 @@
     nodeEls[p.id] = g;
   });
 
+  /* walkthrough state (the engine lives below the graph code) */
+  let tourActive = false, tourStep = -1, tourRaf = null;
+  let tourFx = [];   // svg elements owned by the current tour step
+
   const panel = $("#node-panel");
   let selected = null;
   function selectProject(id, scroll) {
+    if (tourActive) exitTour();
     selected = id;
     Object.entries(nodeEls).forEach(([k, g]) => g.classList.toggle("selected", k === id));
     const p = byId[id];
+    panel.classList.remove("touring");
     panel.innerHTML =
       '<span class="np-layer">' + p.layer + " layer</span>" +
+      '<span class="np-provider">' + p.provider + "</span>" +
       "<h3>" + p.name + "</h3>" +
-      '<p class="np-one">' + p.one + "</p>" +
+      '<div class="np-sec"><b>PURPOSE</b><p>' + p.purpose + "</p></div>" +
+      '<div class="np-sec"><b>WHAT MAKES IT UNIQUE</b><p>' + p.unique + "</p></div>" +
+      '<p class="np-io"><span>consumes</span>' + p.consumes + "</p>" +
+      '<p class="np-io"><span>produces</span>' + p.produces + "</p>" +
+      '<div class="np-sec"><b>TALKS TO</b><div class="talk-chips">' +
+        p.talks.map((t) => '<button type="button" class="talk-chip" data-talk="' + t + '">' + t + "</button>").join("") +
+      "</div></div>" +
       '<p class="np-row">stack&nbsp;&nbsp;<b>' + p.stack + "</b></p>" +
       '<p class="np-row">proof&nbsp;&nbsp;<b>' + p.tests + "</b></p>" +
       '<div class="np-result"><b>VERIFIED RESULT</b>' + p.result + "</div>" +
       '<a class="np-link" href="' + p.url + '">github.com/hsooligan95/' + p.name + " -></a>";
+    panel.querySelectorAll(".talk-chip").forEach((chip) =>
+      chip.addEventListener("click", () => selectProject(chip.dataset.talk, false)));
     if (scroll) $("#fleet").scrollIntoView({ behavior: "smooth" });
   }
   selectProject("agent-trace", false);
+
+  /* ================= guided walkthrough =================
+   * A stepped tour over the fleet graph: each step highlights the
+   * nodes involved, animates what flows between them, and captions
+   * it in plain language. Every caption traces to a repo README or a
+   * recorded artifact (the drill store, the broker demo transcript,
+   * the arbitration report) - the steps follow the real flow of
+   * work through the platform. */
+  const TOUR = [
+    { nodes: ["factory-floor-agent"], uniq: "factory-floor-agent",
+      title: "The working agent",
+      body: "factory-floor-agent answers questions the LangGraph way: plan, retrieve, answer - then check its own answer against the retrieved passages. If the evidence isn't there, it abstains instead of guessing.",
+      flow: "A question in -> a cited answer (or an abstention) out" },
+    { nodes: ["agent-canary"], uniq: "agent-canary",
+      title: "Gated before it runs",
+      body: "Before a new version of that agent may run at all, agent-canary shadow-runs it against the current version over a golden task suite, scored by programmatic checks - no LLM judge. In the recorded drill it blocked the candidate cold: success fell 100% -> 36% with 10 forbidden actions, and exit code 2 stopped the promotion.",
+      flow: "A candidate config -> a PROMOTE or BLOCK verdict (a decision record)" },
+    { nodes: ["cred-broker", "agent-gate"], arc: ["cred-broker", "agent-gate"], uniq: "cred-broker",
+      title: "Credentials, scoped down",
+      body: "When the agent needs access, it doesn't hold a long-lived key. cred-broker's policy engine approves, denies, or scopes the request down - in its demo, db/* + write + 3600s came back as db/factory/* + read-only + 300s - and agent-gate verifies that token on the calls that follow.",
+      flow: "An access request -> a short-lived, scoped credential" },
+    { nodes: ["agent-gate"], uniq: "agent-gate",
+      title: "Policy at the door",
+      body: "Every tool call passes through agent-gate: per-agent allowlists, allow / deny / require-approval policy, and screening of tool results before the agent sees them. In the drill it flagged 6 patterns in a single result - an ignore-instructions injection, an export-all-data request, a secret-exfil URL, an SSN, an email, a phone number.",
+      flow: "Tool calls and results -> allow / deny / approval decisions" },
+    { nodes: ["blast-radius"], uniq: "blast-radius",
+      title: "Execution with a way back",
+      body: "Approved changes run inside blast-radius's execution shell: a deterministic plan, explicit human approval, then one checkpointed step at a time. In the drill the process was killed with kill -9 mid-run; a fresh process resumed from the checkpoint, verification failed on a bad disk, and rollback restored a byte-identical state.",
+      flow: "An approved plan -> executed steps, checkpoints, and - when needed - a rollback" },
+    { nodes: ["agent-ledger"], uniq: "agent-ledger",
+      title: "Every step metered",
+      body: "agent-ledger meters every step as an OpenTelemetry span, cost attributed per agent, run, task, and step. Budgets bite mid-flight: a runaway loop was halted at step 6 by a $0.25 budget, and step routing measured 40.5% cheaper at identical outcomes.",
+      flow: "Steps -> cost spans and a running total ($0.57313 for the whole drill)" },
+    { nodes: ["agent-trace"], hub: true, uniq: "agent-trace",
+      title: "One record of everything",
+      body: "Everything you just saw emitted into one store under a single trace ID - which is why this graph is drawn the way it is: the spokes are producers, the center is agent-trace. The store is append-only and hash-chained, so the record verifies end-to-end and a one-character tamper names its exact event.",
+      flow: "Events from every producer -> one verifiable timeline (117 events in the drill)" },
+    { nodes: ["agent-chaos", "agent-flightsim"], uniq: "agent-flightsim",
+      title: "Proven before production",
+      body: "Before any of this is trusted, the Prove layer attacks it. agent-chaos injects tool failures, prompt injection, and poisoned results - silent failures went from 100% with defenses off to 0% with them on. agent-flightsim sweeps world states and caught an agent fluently reporting a stale corpus as current, every sentence grounded at 1.0.",
+      flow: "Faults and hostile worlds -> measured failure rates and oracle findings" },
+    { nodes: ["mission-control"], uniq: "mission-control",
+      title: "Disagreement, arbitrated",
+      body: "When specialist agents disagree on an incident, mission-control doesn't vote and never weighs their confidences. Its arbiter gathers new evidence from the environment and decides from that alone - in the recorded run it chose rollback (confidence 0.6) over scale-out (0.8), because it found the deploy that started the errors.",
+      flow: "Conflicting proposals -> an evidence-cited decision record" },
+    { nodes: ["ato-in-a-box"], uniq: "ato-in-a-box",
+      title: "Evidence for the assessor",
+      body: "Finally, ato-in-a-box turns the trace record into a compliance evidence pack: controls mapped to NIST 800-53 and the AI RMF, each citing concrete event numbers. From the drill store: 13 controls evidenced - and 12 gaps declared, because a control with no artifact behind it is demoted automatically.",
+      flow: "The trace store -> an assessor-ready evidence pack" },
+    { nodes: ordered.map((p) => p.id), hub: true, scale: true, uniq: null,
+      title: "How it scales",
+      body: "One agent or a hundred run on the same spine: allowlists, budgets, and credentials are per-agent, the store stays append-only, and the trace ID discipline doesn't change. The whole flow is re-proven nightly - agent-trace's CI re-runs this drill on fresh checkouts and commits the verified status back.",
+      flow: "The same platform, at fleet size",
+      link: { href: "https://github.com/hsooligan95/agent-trace/actions/workflows/nightly-drill.yml", text: "See the nightly drill runs ->" } },
+  ];
+
+  const tourBtn = $("#tour-btn");
+  function clearTourFx() {
+    if (tourRaf) { cancelAnimationFrame(tourRaf); tourRaf = null; }
+    tourFx.forEach((e) => e.remove()); tourFx = [];
+    Object.values(nodeEls).forEach((g) => g.classList.remove("dim", "tour-hot"));
+    Object.values(edgeEls).forEach((e) => e.classList.remove("hot"));
+    hub.classList.remove("tour-hot");
+    svg.classList.remove("touring");
+  }
+  function exitTour() {
+    const was = tourActive;
+    tourActive = false; tourStep = -1;
+    clearTourFx();
+    tourBtn.textContent = "Walk me through it";
+    if (was && selected) selectProject(selected, false);
+  }
+  function tourSegments(step) {
+    const segs = [];
+    if (step.arc) {
+      const a = nodePos[step.arc[0]], b = nodePos[step.arc[1]];
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      const cxp = CX + (mx - CX) * 0.7, cyp = CY + (my - CY) * 0.7;
+      const path = el("path", { d: "M " + a.x + " " + a.y + " Q " + cxp + " " + cyp + " " + b.x + " " + b.y,
+                                "class": "tour-arc" }, svg);
+      tourFx.push(path);
+      segs.push({ path: path, trim: 1 });
+    } else {
+      step.nodes.forEach((id) => {
+        const p = nodePos[id];
+        const path = el("path", { d: "M " + p.x + " " + p.y + " L " + CX + " " + CY,
+                                  "class": "tour-spoke" }, svg);
+        tourFx.push(path);
+        segs.push({ path: path, trim: 0.86 });
+      });
+    }
+    return segs;
+  }
+  function runTourAnimation(segs) {
+    const dots = segs.map(() => {
+      const c = el("circle", { r: 4, "class": "tour-pulse" }, svg);
+      tourFx.push(c);
+      return c;
+    });
+    const DUR = 1100, CYCLE = 1650, t0 = performance.now();
+    function frame(now) {
+      if (!tourActive) return;
+      segs.forEach((s, i) => {
+        const t = ((now - t0 + i * 160) % CYCLE) / DUR;
+        if (t > 1) { dots[i].setAttribute("opacity", "0"); return; }
+        const pt = s.path.getPointAtLength(t * s.trim * s.path.getTotalLength());
+        dots[i].setAttribute("cx", pt.x);
+        dots[i].setAttribute("cy", pt.y);
+        dots[i].setAttribute("opacity", (t < 0.05 || t > 0.97) ? "0.3" : "1");
+      });
+      tourRaf = requestAnimationFrame(frame);
+    }
+    tourRaf = requestAnimationFrame(frame);
+  }
+  function showTourStep(i) {
+    clearTourFx();
+    tourStep = i;
+    const step = TOUR[i];
+    svg.classList.add("touring");
+    Object.entries(nodeEls).forEach(([id, g]) => {
+      g.classList.toggle("dim", !step.nodes.includes(id));
+      g.classList.toggle("tour-hot", step.nodes.includes(id));
+    });
+    step.nodes.forEach((id) => { if (edgeEls[id]) edgeEls[id].classList.add("hot"); });
+    if (step.hub) hub.classList.add("tour-hot");
+    runTourAnimation(tourSegments(step));
+    panel.classList.add("touring");
+    panel.innerHTML =
+      '<span class="np-layer">Walkthrough - step ' + (i + 1) + " of " + TOUR.length + "</span>" +
+      "<h3>" + step.title + "</h3>" +
+      '<p class="np-tour-body">' + step.body + "</p>" +
+      '<p class="np-io"><span>flowed</span>' + step.flow + "</p>" +
+      (step.uniq ? '<div class="np-sec"><b>WHAT MAKES IT UNIQUE</b><p>' + byId[step.uniq].unique + "</p></div>" : "") +
+      (step.link ? '<a class="np-link" href="' + step.link.href + '">' + step.link.text + "</a>" : "") +
+      '<div class="tour-controls">' +
+        '<button type="button" class="btn-ghost" id="tour-prev"' + (i === 0 ? " disabled" : "") + ">Prev</button>" +
+        '<div class="tour-dots">' + TOUR.map((_, d) =>
+          '<button type="button" class="tour-dot' + (d === i ? " on" : "") + '" data-step="' + d +
+          '" aria-label="Step ' + (d + 1) + '"></button>').join("") + "</div>" +
+        '<button type="button" class="btn-amber" id="tour-next">' +
+          (i === TOUR.length - 1 ? "Finish" : "Next") + "</button>" +
+      "</div>" +
+      '<button type="button" class="tour-exit" id="tour-exit">Exit walkthrough (Esc)</button>';
+    panel.querySelector("#tour-prev").addEventListener("click", () => { if (tourStep > 0) showTourStep(tourStep - 1); });
+    panel.querySelector("#tour-next").addEventListener("click", () => {
+      if (tourStep >= TOUR.length - 1) exitTour(); else showTourStep(tourStep + 1);
+    });
+    panel.querySelector("#tour-exit").addEventListener("click", exitTour);
+    panel.querySelectorAll(".tour-dot").forEach((d) =>
+      d.addEventListener("click", () => showTourStep(parseInt(d.dataset.step, 10))));
+  }
+  function startTour() {
+    tourActive = true;
+    Object.values(nodeEls).forEach((g) => g.classList.remove("selected"));
+    tourBtn.textContent = "Exit walkthrough";
+    showTourStep(0);
+    $("#fleet").scrollIntoView({ behavior: "smooth" });
+  }
+  tourBtn.addEventListener("click", () => { tourActive ? exitTour() : startTour(); });
+  document.addEventListener("keydown", (ev) => {
+    if (!tourActive) return;
+    if (ev.key === "Escape") exitTour();
+    if (ev.key === "ArrowRight" && tourStep < TOUR.length - 1) showTourStep(tourStep + 1);
+    if (ev.key === "ArrowLeft" && tourStep > 0) showTourStep(tourStep - 1);
+  });
 
   /* ================= agent ops feed (recorded replay) =================
    * Three recorded runs, replayed as a group-chat feed. Scripts are
@@ -365,7 +547,8 @@
       row.className = "proj-row";
       row.innerHTML = '<span class="pr-name">' + p.name + '</span>' +
         '<span class="pr-one">' + p.one + '</span>' +
-        '<span class="pr-meta">' + p.stack + "<br>" + p.tests + "</span>";
+        '<span class="pr-meta">' + p.stack + "<br>" + p.tests +
+        '<br><span class="pr-prov">' + p.provider + "</span></span>";
       row.addEventListener("click", () => selectProject(p.id, true));
       block.appendChild(row);
     });

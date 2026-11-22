@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Andrew Hsu - agent platform projects</title>
-<meta name="description" content="Sixteen open-source projects that form one platform layer for AI agents: govern the tools, gate the changes, execute safely, meter the cost, trace everything.">
+<meta name="description" content="Fifteen open-source projects that form one platform layer for AI agents: govern the tools, gate the changes, execute safely, meter the cost, trace everything.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2307090b'/%3E%3Ccircle cx='8' cy='8' r='4' fill='none' stroke='%23f0a13c' stroke-width='1.6'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -31,11 +31,13 @@
   <!-- ============ HERO / FLEET GRAPH ============ -->
   <section id="fleet" class="hero">
     <div class="hero-head">
-      <h1>One platform, sixteen parts.</h1>
+      <h1>One platform, fifteen parts.</h1>
       <p class="lede">The projects below are not a list - they are one system. Agents run on it,
       a gateway governs their tools, canaries gate their changes, an execution shell keeps
       remediation reversible, a ledger meters the cost, and a hash-chained trace store records
-      all of it. Click any node.</p>
+      all of it. Click any node - or take the walkthrough and watch the parts hand work to
+      each other.</p>
+      <button id="tour-btn" class="btn-amber tour-btn" type="button">Walk me through it</button>
     </div>
 
     <div class="graph-shell">
@@ -43,6 +45,19 @@
       <aside id="node-panel" class="node-panel" aria-live="polite"></aside>
     </div>
     <p class="graph-hint">Nodes marked <span class="dot-key"></span> emit into the trace store during the drill replayed below.</p>
+
+    <div class="providers-strip">
+      <span class="prov-label">TOOL SURFACES - ADAPTERS PLUG IN UNDERNEATH</span>
+      <div class="prov-chips">
+        <span class="prov-chip">AWS</span>
+        <span class="prov-chip">Azure</span>
+        <span class="prov-chip">Google Cloud</span>
+        <span class="prov-chip">OCI</span>
+      </div>
+      <p class="prov-line">Adapters plug in underneath. The governance, trace, and cost layers above them don't change.</p>
+      <p class="prov-note">Today's adapters are AWS - mcp-aws-explorer (tool surface), agentcore-port (Bedrock runtime
+      contract), blast-radius (mock execution). The separation is the point: nothing above the adapter layer names a cloud.</p>
+    </div>
   </section>
 
   <!-- ============ AGENT OPS FEED - RECORDED REPLAY ============ -->
@@ -133,7 +148,7 @@
   <section id="projects">
     <div class="sec-head">
       <h2>Project index</h2>
-      <span class="sec-tag">16 repositories - grouped by platform layer</span>
+      <span class="sec-tag">15 repositories - grouped by platform layer</span>
     </div>
     <div id="project-index"></div>
   </section>
