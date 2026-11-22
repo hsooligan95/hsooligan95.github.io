@@ -1,8 +1,9 @@
 # hsooligan95.github.io
 
 Andrew Hsu's developer site: a static page presenting a set of AI agent
-platform projects — the fleet graph, a replayable run, and a live
-tamper-evidence demo — with links to each project's GitHub repository.
+platform projects — the fleet graph, a live agent ops feed that replays
+recorded runs as an agent group chat, and a live tamper-evidence demo —
+with links to each project's GitHub repository.
 
 Live at https://hsooligan95.github.io/
 
@@ -16,8 +17,10 @@ open `index.html` or serve the directory and it runs as-is.
   implementation used by agent-trace, so browser-side hashes agree
   byte-for-byte with the stored events
 - `data/projects.js` — the project list rendered into the fleet graph
-- `data/drill.js`, `data/chain.js` — the run data behind the replay and
-  the tamper demo
+- `data/feed.js` — the ops-feed scripts: the platform drill condensed
+  from the drill store, and the MissionControl incident-arbitration
+  scenario parsed from its suite report
+- `data/drill.js`, `data/chain.js` — the run data behind the tamper demo
 
 ## Where the data comes from
 
@@ -39,6 +42,9 @@ and Rust verifiers produce on the same store.
 
 - `tools/gen_data.py` — regenerate `data/drill.js` and `data/chain.js`
   from the agent-trace drill store
+- `tools/gen_feed.py` — regenerate `data/feed.js` (asserts the drill
+  totals and parses the MissionControl decision record before writing)
 - `tools/verify_js_canonical.mjs` — check the browser canonicalization
   against the Python reference
-- `tools/verify_site.py` — structural checks over the site files
+- `tools/verify_site.py` — full browser verification: graph, tamper
+  demo, and both ops-feed channels played end-to-end

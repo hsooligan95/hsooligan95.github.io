@@ -88,62 +88,168 @@
   }
   selectProject("agent-trace", false);
 
-  /* ================= drill replay ================= */
-  const D = window.DRILL;
-  const prefixCost = [0];
-  D.events.forEach((e) => prefixCost.push(prefixCost[prefixCost.length - 1] + e.cost));
-  const ribbon = $("#ribbon");
-  const beatEls = D.beats.map((b) => {
-    const d = document.createElement("span");
-    d.className = "beat"; d.textContent = b.label; d.title = "seq " + b.atSeq;
-    ribbon.appendChild(d);
-    return d;
-  });
-  const scrub = $("#scrub");
-  scrub.max = D.totalEvents;
-  let pos = 0, timer = null;
-  const playBtn = $("#play-btn");
+  /* ================= live agent ops feed =================
+   * Two recorded runs, replayed as a live group-chat feed. Scripts are
+   * generated (tools/gen_feed.py): channel 1 from the real AgentTrace
+   * drill store, channel 2 from the MissionControl suite report. */
+  const feedEl = $("#feed"), rosterEl = $("#roster-list"), decEl = $("#decisions");
+  const feedPlayBtn = $("#play-btn"), feedStatus = $("#feed-status"), feedBar = $("#feed-bar");
+  let chan = null, chanIdx = 0, itemIdx = 0, playing = false, userHold = false;
+  let finished = false, speed = 1, feedTimer = null, typingEl = null;
+  let rosterEls = {};
 
-  function renderReplay() {
-    $("#stat-events").textContent = pos + " / " + D.totalEvents;
-    $("#stat-cost").textContent = "$" + prefixCost[pos].toFixed(5);
-    $("#hub-count").textContent = pos + " events";
-    D.beats.forEach((b, i) => {
-      beatEls[i].classList.toggle("lit", b.atSeq <= pos);
-      beatEls[i].classList.remove("frontier");
-    });
-    const litIdx = D.beats.reduce((acc, b, i) => (b.atSeq <= pos ? i : acc), -1);
-    if (litIdx >= 0 && pos < D.totalEvents) beatEls[litIdx].classList.add("frontier");
-    // node states
-    const fired = {};
-    let currentSrc = null;
-    for (let i = 0; i < pos; i++) { fired[D.events[i].src] = true; currentSrc = D.events[i].src; }
-    Object.entries(nodeEls).forEach(([id, g]) => {
-      g.classList.toggle("active", id === currentSrc);
-      g.classList.toggle("dim", pos > 0 && PRODUCERS.has(id) && !fired[id]);
-      if (edgeEls[id]) edgeEls[id].classList.toggle("hot", !!fired[id]);
-    });
-    const now = $("#now-event");
-    if (pos === 0) now.textContent = "Press play, or drag the scrubber.";
-    else {
-      const e = D.events[pos - 1];
-      now.innerHTML = "seq <b>" + e.seq + "</b> - " + e.src + " - " + e.label;
-    }
-    scrub.value = pos;
+  function rosterSet(id, state, text) {
+    const r = rosterEls[id];
+    if (!r) return;
+    r.dot.className = "r-dot " + state;
+    if (text) r.status.textContent = text;
   }
-  function stopTimer() { if (timer) { clearInterval(timer); timer = null; playBtn.textContent = pos >= D.totalEvents ? "Replay" : "Play"; } }
-  playBtn.addEventListener("click", () => {
-    if (timer) { stopTimer(); return; }
-    if (pos >= D.totalEvents) pos = 0;
-    playBtn.textContent = "Pause";
-    timer = setInterval(() => {
-      pos++;
-      renderReplay();
-      if (pos >= D.totalEvents) stopTimer();
-    }, 110);
-  });
-  scrub.addEventListener("input", () => { stopTimer(); pos = parseInt(scrub.value, 10); renderReplay(); });
-  renderReplay();
+  function buildChannel(ci) {
+    clearTimeout(feedTimer);
+    hideTyping();
+    playing = false; userHold = false; finished = false; itemIdx = 0;
+    chanIdx = ci; chan = window.FEED.channels[ci];
+    feedEl.innerHTML = ""; decEl.innerHTML = ""; rosterEl.innerHTML = "";
+    rosterEls = {};
+    chan.roster.forEach((r) => {
+      const row = document.createElement("div");
+      row.className = "roster-row";
+      row.innerHTML = '<span class="r-dot idle"></span><span class="r-main">' +
+        '<span class="r-name">' + r.id + '</span>' +
+        '<span class="r-note">' + r.note + '</span>' +
+        '<span class="r-status">idle</span></span>';
+      rosterEl.appendChild(row);
+      rosterEls[r.id] = { dot: row.querySelector(".r-dot"), status: row.querySelector(".r-status") };
+    });
+    $("#feed-heading").textContent = chan.heading;
+    $("#st-events").textContent = "0 / " + chan.totals.events;
+    $("#st-cost-row").style.display = chan.totals.cost == null ? "none" : "";
+    $("#st-cost").textContent = "$0.00000";
+    $("#st-chain").textContent = "VERIFIED";
+    if (chan.id === "platform-drill") $("#hub-count").textContent = "0 events";
+    feedBar.style.width = "0%";
+    feedPlayBtn.textContent = "Play";
+    feedStatus.textContent = "ready — " + chan.items.length + " posts";
+    document.querySelectorAll(".chan-tab").forEach((t, i) =>
+      t.classList.toggle("active", i === ci));
+  }
+  function showTyping(it) {
+    hideTyping();
+    typingEl = document.createElement("div");
+    typingEl.className = "fm fm-typing";
+    typingEl.innerHTML = '<span class="fm-agent">' + it.agent + '</span>' +
+      '<span class="t-text">' + (it.say || "is working") + '</span>' +
+      '<span class="t-dots"><i></i><i></i><i></i></span>';
+    feedEl.appendChild(typingEl);
+    feedEl.scrollTop = feedEl.scrollHeight;
+    rosterSet(it.agent, "speaking", it.say || "working");
+    pulseNode(it.agent);
+  }
+  function hideTyping() { if (typingEl) { typingEl.remove(); typingEl = null; } }
+  function pulseNode(id) {
+    const g = nodeEls[id];
+    if (!g) return;
+    g.classList.remove("pulse"); void g.offsetWidth; g.classList.add("pulse");
+    setTimeout(() => g.classList.remove("pulse"), 950);
+  }
+  function land(it) {
+    const el = document.createElement("div");
+    if (it.kind === "msg") {
+      el.className = "fm fm-msg";
+      el.innerHTML = '<div class="fm-head"><span class="fm-agent">' + it.agent +
+        '</span><span class="fm-seq">store @ seq ' + it.ev + '</span></div>' +
+        '<div class="fm-body">' + it.text + '</div>';
+      rosterSet(it.agent, "idle", "last post · seq " + it.ev);
+    } else if (it.kind === "decision") {
+      el.className = "fm fm-decision";
+      el.innerHTML = '<div class="fm-head"><span class="fm-agent">' + it.agent +
+        '</span><span class="fm-dec-tag">DECISION</span>' +
+        '<span class="fm-seq">store @ seq ' + it.ev + '</span></div>' +
+        '<div class="fm-title">' + it.title + '</div><ul class="fm-lines">' +
+        it.lines.map((l) => "<li>" + l + "</li>").join("") + "</ul>";
+      const row = document.createElement("div");
+      row.className = "dec-row"; row.textContent = it.log;
+      decEl.appendChild(row);
+      rosterSet(it.agent, "idle", "decision recorded · seq " + it.ev);
+    } else {
+      el.className = "fm fm-sys sys-" + it.style;
+      el.textContent = it.text;
+    }
+    if (it.status) Object.entries(it.status).forEach(([id, [st, tx]]) => {
+      rosterSet(id, st, tx); pulseNode(id);
+    });
+    feedEl.appendChild(el);
+    feedEl.scrollTop = feedEl.scrollHeight;
+    $("#st-events").textContent = it.ev + " / " + chan.totals.events;
+    if (chan.totals.cost != null && it.cost != null)
+      $("#st-cost").textContent = "$" + it.cost.toFixed(5);
+    if (chan.id === "platform-drill") $("#hub-count").textContent = it.ev + " events";
+    feedBar.style.width = Math.round((itemIdx + 1) / chan.items.length * 100) + "%";
+  }
+  function delays(it) {
+    if (it.kind === "decision") return { type: 850, hold: 700 };
+    if (it.kind === "system") return { type: 0, hold: 800 };
+    return { type: 600, hold: 480 };
+  }
+  function step() {
+    if (!playing) return;
+    if (itemIdx >= chan.items.length) {
+      finished = true; playing = false;
+      feedPlayBtn.textContent = "Replay";
+      feedStatus.textContent = "complete — " + chan.items.length + " posts, all decisions on record";
+      Object.keys(rosterEls).forEach((id) => {
+        if (rosterEls[id].dot.className.indexOf("dead") < 0) rosterSet(id, "done", "done");
+      });
+      return;
+    }
+    const it = chan.items[itemIdx];
+    const d = delays(it);
+    if (it.agent) {
+      showTyping(it);
+      feedTimer = setTimeout(() => {
+        hideTyping(); land(it); itemIdx++;
+        feedTimer = setTimeout(step, d.hold / speed);
+      }, d.type / speed);
+    } else {
+      feedTimer = setTimeout(() => {
+        land(it); itemIdx++;
+        feedTimer = setTimeout(step, d.hold / speed);
+      }, d.hold / speed);
+    }
+  }
+  function playFeed() {
+    if (finished) buildChannel(chanIdx);
+    if (playing) return;
+    playing = true; userHold = false;
+    feedPlayBtn.textContent = "Pause";
+    feedStatus.textContent = "live — replaying the record";
+    step();
+  }
+  function pauseFeed(auto) {
+    if (!playing) return;
+    playing = false;
+    clearTimeout(feedTimer); hideTyping();
+    if (!auto) userHold = true;
+    feedPlayBtn.textContent = finished ? "Replay" : "Play";
+    feedStatus.textContent = "paused";
+  }
+  feedPlayBtn.addEventListener("click", () => { playing ? pauseFeed(false) : playFeed(); });
+  $("#restart-btn").addEventListener("click", () => { buildChannel(chanIdx); playFeed(); });
+  document.querySelectorAll(".speed-btn").forEach((b) => b.addEventListener("click", () => {
+    speed = parseInt(b.dataset.speed, 10);
+    document.querySelectorAll(".speed-btn").forEach((x) => x.classList.toggle("active", x === b));
+  }));
+  document.querySelectorAll(".chan-tab").forEach((t) => t.addEventListener("click", () => {
+    buildChannel(parseInt(t.dataset.chan, 10)); playFeed();
+  }));
+  buildChannel(0);
+  const feedIO = new IntersectionObserver((entries) => {
+    entries.forEach((en) => {
+      if (en.isIntersecting) { if (!userHold && !finished) playFeed(); }
+      else pauseFeed(true);
+    });
+  }, { threshold: 0.2 });
+  feedIO.observe($("#run"));
 
   /* ================= tamper demo ================= */
   const C = window.AgentTraceCanon;

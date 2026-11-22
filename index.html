@@ -18,7 +18,7 @@
     </div>
     <nav class="topnav">
       <a href="#fleet">Fleet</a>
-      <a href="#run">Watch a run</a>
+      <a href="#run">Live feed</a>
       <a href="#tamper">Tamper test</a>
       <a href="#projects">Projects</a>
       <a href="#contact">Contact</a>
@@ -45,29 +45,52 @@
     <p class="graph-hint">Nodes marked <span class="dot-key"></span> emit into the trace store during the drill replayed below.</p>
   </section>
 
-  <!-- ============ WATCH A RUN ============ -->
+  <!-- ============ LIVE AGENT OPS FEED ============ -->
   <section id="run" class="panel">
     <div class="sec-head">
-      <h2>Watch a run</h2>
-      <span class="sec-tag">real data - trace <span id="drill-trace">trace-drill-45d404d0</span></span>
+      <h2>Live agent ops feed</h2>
+      <span class="sec-tag">recorded runs - replayed as they happened</span>
     </div>
-    <p class="sec-sub">A real platform drill, replayed from the AgentTrace store: a canary blocks a bad
-    promotion, the gateway flags a poisoned tool result, a remediation agent is killed mid-run with
-    <span class="mono">kill -9</span>, resumes, fails verification, and rolls back - then the QA agent
-    answers, the ledger costs it, and the chaos matrix closes. 117 events, six producers, one trace ID.</p>
+    <p class="sec-sub">This is what the platform looks like while it works: the agents post what they
+    are doing, argue when they disagree, and record their decisions in the open. Both channels below
+    are real recorded runs from the AgentTrace store - every number in the feed is from the record;
+    only the pacing is a replay.</p>
 
-    <div class="ribbon" id="ribbon"></div>
+    <div class="chan-tabs" role="tablist" aria-label="Feed channels">
+      <button class="chan-tab active" type="button" data-chan="0" role="tab">#platform-drill</button>
+      <button class="chan-tab" type="button" data-chan="1" role="tab">#incident-arbitration</button>
+    </div>
+    <div id="feed-heading" class="feed-heading mono"></div>
 
-    <div class="replay-controls">
-      <button id="play-btn" class="btn-amber" type="button">Play</button>
-      <input id="scrub" type="range" min="0" max="117" step="1" value="0" aria-label="Scrub replay">
-      <div class="replay-stats mono">
-        <span>events <b id="stat-events">0 / 117</b></span>
-        <span>cost <b id="stat-cost">$0.00000</b></span>
-        <span>chain <b id="stat-chain" class="ok">VERIFIED</b></span>
+    <div class="ops-grid">
+      <aside class="roster" aria-label="Agent roster">
+        <div class="rail-title">AGENTS</div>
+        <div id="roster-list"></div>
+      </aside>
+
+      <div id="feed" class="feed" aria-live="polite"></div>
+
+      <aside class="state" aria-label="Live state">
+        <div class="rail-title">LIVE STATE</div>
+        <div class="stat-row"><span>events</span><b id="st-events">0 / 117</b></div>
+        <div class="stat-row" id="st-cost-row"><span>run cost</span><b id="st-cost">$0.00000</b></div>
+        <div class="stat-row"><span>chain</span><b id="st-chain" class="ok">VERIFIED</b></div>
+        <div class="rail-title dec-title">DECISIONS</div>
+        <div id="decisions" class="decisions"></div>
+      </aside>
+    </div>
+
+    <div class="feed-controls">
+      <button id="play-btn" class="btn-amber" type="button">Pause</button>
+      <div class="speed-group" role="group" aria-label="Replay speed">
+        <button class="speed-btn active" type="button" data-speed="1">1&times;</button>
+        <button class="speed-btn" type="button" data-speed="2">2&times;</button>
+        <button class="speed-btn" type="button" data-speed="4">4&times;</button>
       </div>
+      <button id="restart-btn" class="btn-ghost" type="button">Restart</button>
+      <div class="feed-progress"><div id="feed-bar"></div></div>
+      <span id="feed-status" class="mono feed-status">starting&hellip;</span>
     </div>
-    <div id="now-event" class="now-event mono">Press play, or drag the scrubber.</div>
   </section>
 
   <!-- ============ TAMPER DEMO ============ -->
@@ -122,6 +145,7 @@
 </footer>
 
 <script src="data/projects.js"></script>
+<script src="data/feed.js"></script>
 <script src="data/drill.js"></script>
 <script src="data/chain.js"></script>
 <script src="canonical.js"></script>
