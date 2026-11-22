@@ -78,7 +78,7 @@ with sync_playwright() as pw:
     panel_check("cred-broker", "Provider-agnostic")
     panel_check("blast-radius", "AWS (mock) execution adapter")
     panel_check("agentcore-port", "AWS adapter")
-    panel_check("mcp-aws-explorer", "AWS adapter")
+    panel_check("mcp-cloud-explorer", "Provider-agnostic — adapters for AWS · Azure · Google Cloud · OCI (mock data)")
 
     # talks-to chips navigate: from agent-gate, click the cred-broker chip
     page.locator('#graph .node[data-id="agent-gate"]').click()

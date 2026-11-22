@@ -81,7 +81,7 @@ def jsonl_count(repo, rel):
 EXPECTED = {
     "factory-floor-agent":    lambda: readme_tests("factory-floor-agent"),
     "context-vault":          lambda: readme_tests("context-vault"),
-    "mcp-aws-explorer":       lambda: smoke_assert_count("mcp-aws-explorer"),
+    "mcp-cloud-explorer":     lambda: smoke_assert_count("mcp-cloud-explorer"),
     "agent-gate":             lambda: readme_tests("agent-gate"),
     "cred-broker":            lambda: readme_tests("cred-broker"),
     "agent-canary":           lambda: def_test_count("agent-canary"),

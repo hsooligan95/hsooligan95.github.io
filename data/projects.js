@@ -34,18 +34,18 @@ window.PROJECTS = [
     "url": "https://github.com/hsooligan95/context-vault"
   },
   {
-    "id": "mcp-aws-explorer", "name": "mcp-aws-explorer", "layer": "Run",
-    "one": "MCP server exposing read-only AWS inventory and cost tools over a local mock dataset.",
-    "purpose": "An MCP server exposing read-only AWS inventory and cost tools over a local mock dataset. It gives agents a real tool surface to call - typed inputs, structured JSON outputs, zero credentials, zero network calls.",
-    "unique": "The only tool surface here: real MCP tools an agent can call, while everything else governs, measures, or records the calls.",
+    "id": "mcp-cloud-explorer", "name": "mcp-cloud-explorer", "layer": "Run",
+    "one": "MCP server with one read-only tool surface spanning AWS, Azure, Google Cloud, and OCI over local mock datasets.",
+    "purpose": "An MCP server giving agents one read-only tool surface across four clouds - AWS, Azure, Google Cloud, and OCI - over local mock datasets. Every tool takes a provider parameter and returns the same normalized shape, so agents explore inventory and cost with typed inputs and structured JSON outputs - zero credentials, zero network calls.",
+    "unique": "The only tool surface here - and the only multi-provider one: real MCP tools an agent can call across four clouds, while everything else governs, measures, or records the calls.",
     "consumes": "MCP tool calls over stdio",
     "produces": "Resource lists, resource detail, cost summaries, idle-resource findings",
     "talks": ["agent-gate"],
-    "provider": "AWS adapter - tool surface",
+    "provider": "Provider-agnostic — adapters for AWS · Azure · Google Cloud · OCI (mock data)",
     "stack": "TypeScript - MCP SDK - Zod",
-    "tests": "8/8 smoke checks",
+    "tests": "15/15 smoke checks",
     "result": "Full MCP handshake and every tool exercised end-to-end over stdio - zero credentials, zero network calls.",
-    "url": "https://github.com/hsooligan95/mcp-aws-explorer"
+    "url": "https://github.com/hsooligan95/mcp-cloud-explorer"
   },
   {
     "id": "agent-gate", "name": "agent-gate", "layer": "Govern",
@@ -54,7 +54,7 @@ window.PROJECTS = [
     "unique": "The only piece standing in the call path, able to deny or pause a tool call before it happens.",
     "consumes": "Tool calls + a policy file + per-agent tokens",
     "produces": "Allow / deny / require-approval decisions, screened results, audit records",
-    "talks": ["cred-broker", "mcp-aws-explorer", "agent-trace"],
+    "talks": ["cred-broker", "mcp-cloud-explorer", "agent-trace"],
     "provider": "Provider-agnostic",
     "stack": "TypeScript - Node - MCP",
     "tests": "29 tests",
